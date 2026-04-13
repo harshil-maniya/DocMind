@@ -1,0 +1,217 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: docmind-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-docmind}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-docmind_password}
+      POSTGRES_DB: ${DB_DATABASE:-docmind}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-docmind} -d ${DB_DATABASE:-docmind}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: docmind-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-} --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: docmind-api-gateway
+    restart: unless-stopped
+    ports:
+      - "${API_GATEWAY_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60000}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-100}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      AUTH_SERVICE_URL: http://auth-service:3001
+      DOC_SERVICE_URL: http://doc-service:3002
+      AI_SERVICE_URL: http://ai-service:3003
+      QUERY_SERVICE_URL: http://query-service:3004
+      ANALYTICS_SERVICE_URL: http://analytics-service:3005
+    depends_on:
+      - auth-service
+      - doc-service
+      - ai-service
+      - query-service
+      - analytics-service
+
+  auth-service:
+    build:
+      context: ..
+      dockerfile: apps/auth-service/Dockerfile
+    container_name: docmind-auth-service
+    restart: unless-stopped
+    ports:
+      - "${AUTH_SERVICE_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-docmind}
+      DB_PASSWORD: ${DB_PASSWORD:-docmind_password}
+      DB_DATABASE: ${DB_DATABASE:-docmind}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  doc-service:
+    build:
+      context: ..
+      dockerfile: apps/doc-service/Dockerfile
+    container_name: docmind-doc-service
+    restart: unless-stopped
+    ports:
+      - "${DOC_SERVICE_PORT:-3002}:3002"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-docmind}
+      DB_PASSWORD: ${DB_PASSWORD:-docmind_password}
+      DB_DATABASE: ${DB_DATABASE:-docmind}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      JWT_SECRET: ${JWT_SECRET}
+      CHUNK_SIZE_TOKENS: ${CHUNK_SIZE_TOKENS:-512}
+      CHUNK_OVERLAP_TOKENS: ${CHUNK_OVERLAP_TOKENS:-50}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ai-service:
+    build:
+      context: ..
+      dockerfile: apps/ai-service/Dockerfile
+    container_name: docmind-ai-service
+    restart: unless-stopped
+    ports:
+      - "${AI_SERVICE_PORT:-3003}:3003"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-docmind}
+      DB_PASSWORD: ${DB_PASSWORD:-docmind_password}
+      DB_DATABASE: ${DB_DATABASE:-docmind}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      JWT_SECRET: ${JWT_SECRET}
+      CACHE_SIMILARITY_THRESHOLD: ${CACHE_SIMILARITY_THRESHOLD:-0.95}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-3600}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-10}
+      RETRIEVAL_VECTOR_WEIGHT: ${RETRIEVAL_VECTOR_WEIGHT:-0.7}
+      RETRIEVAL_KEYWORD_WEIGHT: ${RETRIEVAL_KEYWORD_WEIGHT:-0.3}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  query-service:
+    build:
+      context: ..
+      dockerfile: apps/query-service/Dockerfile
+    container_name: docmind-query-service
+    restart: unless-stopped
+    ports:
+      - "${QUERY_SERVICE_PORT:-3004}:3004"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-docmind}
+      DB_PASSWORD: ${DB_PASSWORD:-docmind_password}
+      DB_DATABASE: ${DB_DATABASE:-docmind}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  analytics-service:
+    build:
+      context: ..
+      dockerfile: apps/analytics-service/Dockerfile
+    container_name: docmind-analytics-service
+    restart: unless-stopped
+    ports:
+      - "${ANALYTICS_SERVICE_PORT:-3005}:3005"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-docmind}
+      DB_PASSWORD: ${DB_PASSWORD:-docmind_password}
+      DB_DATABASE: ${DB_DATABASE:-docmind}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      OPENAI_COST_PER_1K_INPUT_TOKENS: ${OPENAI_COST_PER_1K_INPUT_TOKENS:-0.01}
+      OPENAI_COST_PER_1K_OUTPUT_TOKENS: ${OPENAI_COST_PER_1K_OUTPUT_TOKENS:-0.03}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: docmind-network
+    driver: bridge

@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "strictBindCallApply": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@docmind/common": ["libs/common/src/index.ts"],
+      "@docmind/common/*": ["libs/common/src/*"],
+      "@docmind/llm": ["libs/llm/src/index.ts"],
+      "@docmind/llm/*": ["libs/llm/src/*"],
+      "@docmind/cache": ["libs/cache/src/index.ts"],
+      "@docmind/cache/*": ["libs/cache/src/*"],
+      "@docmind/retrieval": ["libs/retrieval/src/index.ts"],
+      "@docmind/retrieval/*": ["libs/retrieval/src/*"],
+      "@docmind/rag": ["libs/rag/src/index.ts"],
+      "@docmind/rag/*": ["libs/rag/src/*"]
+    }
+  }
+}
